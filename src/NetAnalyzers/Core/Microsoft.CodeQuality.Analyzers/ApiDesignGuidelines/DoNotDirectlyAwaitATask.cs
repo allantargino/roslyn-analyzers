@@ -53,6 +53,8 @@ namespace Microsoft.CodeQuality.Analyzers.ApiDesignGuidelines
 
                 var configuredAsyncDisposable = context.Compilation.GetOrCreateTypeByMetadataName(WellKnownTypeNames.SystemRuntimeCompilerServicesConfiguredAsyncDisposable);
 
+                var asyncEnumerable = context.Compilation.GetOrCreateTypeByMetadataName(WellKnownTypeNames.SystemCollectionsGenericIAsyncEnumerable1);
+
                 context.RegisterOperationBlockStartAction(context =>
                 {
                     if (context.OwningSymbol is IMethodSymbol method)
@@ -71,6 +73,12 @@ namespace Microsoft.CodeQuality.Analyzers.ApiDesignGuidelines
                         }
 
                         context.RegisterOperationAction(context => AnalyzeAwaitOperation(context, taskTypes), OperationKind.Await);
+
+                        if (asyncEnumerable is not null)
+                        {
+                            context.RegisterOperationAction(context => AnalyzeLoopOperation(context, asyncEnumerable), OperationKind.Loop);
+                        }
+
                         if (configuredAsyncDisposable is not null)
                         {
                             context.RegisterOperationAction(context => AnalyzeUsingOperation(context, configuredAsyncDisposable), OperationKind.Using);
@@ -90,6 +98,23 @@ namespace Microsoft.CodeQuality.Analyzers.ApiDesignGuidelines
             if (typeOfAwaitedExpression != null && taskTypes.Contains(typeOfAwaitedExpression.OriginalDefinition))
             {
                 context.ReportDiagnostic(awaitExpression.Operation.Syntax.CreateDiagnostic(Rule));
+            }
+        }
+
+        private static void AnalyzeLoopOperation(OperationAnalysisContext context, INamedTypeSymbol asyncEnumerable)
+        {
+            // only continues if it is a foreach await
+            var forEachExpression = (IForEachLoopOperation)context.Operation;
+            if (forEachExpression == null || !forEachExpression.IsAsynchronous)
+            {
+                return;
+            }
+
+            // Get the type of the expression being awaited and check it's equal to IAsyncEnumerable<T> type.
+            ITypeSymbol? typeOfAwaitedExpression = forEachExpression.Collection.Type;
+            if (typeOfAwaitedExpression != null && typeOfAwaitedExpression.OriginalDefinition == asyncEnumerable)
+            {
+                context.ReportDiagnostic(forEachExpression.Collection.Syntax.CreateDiagnostic(Rule));
             }
         }
 

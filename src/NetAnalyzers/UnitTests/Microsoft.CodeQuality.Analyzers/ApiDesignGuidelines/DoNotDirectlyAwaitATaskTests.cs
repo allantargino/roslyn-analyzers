@@ -741,5 +741,56 @@ public class C
 
             await VerifyCS.VerifyCodeFixAsync(code, fixedCode);
         }
+
+        [Fact]
+        public async Task CSharpForeachAsync()
+        {
+            var code = @"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+class C
+{
+    public static async Task Execute()
+    {
+        await foreach (int _ in [|RangeAsync()|]);
+    }
+
+    static async IAsyncEnumerable<int> RangeAsync()
+    {
+        await Task.Delay(0).ConfigureAwait(false);
+        yield return 1;
+    }
+}
+";
+
+            var fixedCode = @"
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+class C
+{
+    public static async Task Execute()
+    {
+        await foreach (int _ in RangeAsync().ConfigureAwait(false));
+    }
+
+    static async IAsyncEnumerable<int> RangeAsync()
+    {
+        await Task.Delay(0).ConfigureAwait(false);
+        yield return 1;
+    }
+}
+";
+
+            await new VerifyCS.Test
+            {
+                ReferenceAssemblies = ReferenceAssemblies.Default.AddPackages(
+                    ImmutableArray.Create(new PackageIdentity("Microsoft.Bcl.AsyncInterfaces", "7.0.0"))),
+                LanguageVersion = CSharpLanguageVersion.CSharp8,
+                TestCode = code,
+                FixedCode = fixedCode,
+            }.RunAsync();
+        }
     }
 }
